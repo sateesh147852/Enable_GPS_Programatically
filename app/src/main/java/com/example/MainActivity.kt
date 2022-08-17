@@ -1,17 +1,15 @@
 package com.example
 
-import android.content.Context
 import android.content.Intent
 import android.content.IntentSender.SendIntentException
 import android.os.Bundle
-import android.util.Log
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.databinding.ActivityMainBinding
-import com.google.android.gms.common.api.GoogleApiClient
-import com.google.android.gms.common.api.PendingResult
-import com.google.android.gms.common.api.ResultCallback
-import com.google.android.gms.common.api.Status
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
+import com.google.android.gms.tasks.Task
 
 
 class MainActivity : AppCompatActivity() {
@@ -26,62 +24,59 @@ class MainActivity : AppCompatActivity() {
 
 
         binding.btGet.setOnClickListener {
-            displayLocationSettingsRequest(this)
+            displayLocationPopup()
         }
-
-
     }
 
-    private fun displayLocationSettingsRequest(context: Context) {
-        val googleApiClient = GoogleApiClient.Builder(context)
-            .addApi(LocationServices.API).build()
-        googleApiClient.connect()
-        val locationRequest: LocationRequest = LocationRequest.create()
-        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
-        locationRequest.setInterval(10000)
-        locationRequest.setFastestInterval(10000 / 2)
+    private fun displayLocationPopup() {
+        val locationRequest = LocationRequest.create()
+        locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        locationRequest.interval = 10000
+        locationRequest.fastestInterval = 10000 / 2
         val builder = LocationSettingsRequest.Builder().addLocationRequest(locationRequest)
-        builder.setAlwaysShow(true)
-        val result: PendingResult<LocationSettingsResult> =
-            LocationServices.SettingsApi.checkLocationSettings(googleApiClient, builder.build())
-        result.setResultCallback(object : ResultCallback<LocationSettingsResult?> {
-            override fun onResult(result: LocationSettingsResult) {
-                val status: Status = result.status
-                when (status.getStatusCode()) {
-                    LocationSettingsStatusCodes.SUCCESS -> Log.i(
-                        TAG,
-                        "All location settings are satisfied."
-                    )
-                    LocationSettingsStatusCodes.RESOLUTION_REQUIRED -> {
-                        Log.i(
-                            TAG,
-                            "Location settings are not satisfied. Show the user a dialog to upgrade location settings "
-                        )
+
+
+        val result: Task<LocationSettingsResponse> = LocationServices.getSettingsClient(this)
+            .checkLocationSettings(builder.build())
+
+
+        result.addOnCompleteListener { task ->
+            try {
+                val response = task.getResult(ApiException::class.java)
+                // All location settings are satisfied. The client can initialize location
+                // requests here.
+                //setupLocationListener()
+            } catch (exception: ApiException) {
+                when (exception.statusCode) {
+                    LocationSettingsStatusCodes.RESOLUTION_REQUIRED ->                             // Location settings are not satisfied. But could be fixed by showing the
+                        // user a dialog.
                         try {
-                            // Show the dialog by calling startResolutionForResult(), and check the result
-                            // in onActivityResult().
-                            status.startResolutionForResult(
-                                this@MainActivity,
-                                100
+                            // Cast to a resolvable exception.
+                            val resolvable = exception as ResolvableApiException
+                            // Show the dialog by calling startResolutionForResult(),
+                            // and check the result in onActivityResult().
+                            resolvable.startResolutionForResult(
+                                this, 999
                             )
                         } catch (e: SendIntentException) {
-                            Log.i(TAG, "PendingIntent unable to execute request.")
+                            // Ignore the error.
+                        } catch (e: ClassCastException) {
                         }
-                    }
-                    LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE -> Log.i(
-                        TAG,
-                        "Location settings are inadequate, and cannot be fixed here. Dialog not created."
-                    )
+                    LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE -> {}
                 }
             }
-        })
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != RESULT_OK && requestCode == 100){
-            displayLocationSettingsRequest(this)
+        if (resultCode != RESULT_OK && requestCode == 999) {
+            displayLocationPopup()
+        }
+        else if (resultCode == RESULT_OK && requestCode == 999){
+            Toast.makeText(this,"Location is enabled",Toast.LENGTH_SHORT).show()
         }
     }
+
 
 }
